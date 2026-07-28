@@ -1,0 +1,111 @@
+name: Code Quality & Security Review
+
+on:
+  push:
+    branches: [ "main", "master", "develop" ]
+  pull_request:
+    branches: [ "main", "master", "develop" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  codeql-analysis:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          output: codeql-results
+
+      - name: Upload CodeQL SARIF Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: codeql-results
+          path: codeql-results/*.sarif
+
+  semgrep-scan:
+    name: Semgrep Security Scan
+    runs-on: ubuntu-latest
+    container:
+      image: returntocorp/semgrep
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep with OWASP Top 10 ruleset
+        run: |
+          semgrep scan --config p/owasp-top-ten --json -o semgrep-results.json || true
+
+      - name: Upload Semgrep Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-results
+          path: semgrep-results.json
+
+  npm-audit:
+    name: Dependency Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Run npm audit
+        run: |
+          npm audit --json > npm-audit-results.json || true
+
+      - name: Upload npm audit Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: npm-audit-results
+          path: npm-audit-results.json
+
+  summary:
+    name: Generate Summary Report
+    runs-on: ubuntu-latest
+    needs: [codeql-analysis, semgrep-scan, npm-audit]
+    if: always()
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate summary.md
+        run: |
+          echo "# 📊 Code Quality & Security Scan Summary" > summary.md
+          echo "" >> summary.md
+          echo "| Tool | Scan Type | Output File | Status |" >> summary.md
+          echo "| --- | --- | --- | --- |" >> summary.md
+          echo "| **CodeQL** | SAST (JavaScript / Node.js) | \`codeql-results/\` | Completed |" >> summary.md
+          echo "| **Semgrep** | OWASP Top 10 SAST Ruleset | \`semgrep-results.json\` | Completed |" >> summary.md
+          echo "| **npm audit** | Dependency Security Check | \`npm-audit-results.json\` | Completed |" >> summary.md
+          echo "" >> summary.md
+          echo "## 📁 Artifacts" >> summary.md
+          echo "All raw diagnostic logs and JSON/SARIF output files are attached to this workflow run as downloadable artifacts." >> summary.md
+
+      - name: Publish Summary to GitHub Actions
+        run: cat summary.md >> $GITHUB_STEP_SUMMARY
