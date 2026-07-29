@@ -1,0 +1,16 @@
+{
+  "name": "bus-management-system-selenium-tests",
+  "version": "1.0.0",
+  "description": "Selenium WebDriver E2E Automation Test Suite",
+  "main": "tests/login-tests.js",
+  "scripts": {
+    "test": "mocha tests/login-tests.js --timeout 60000",
+    "generate-report": "node generate-report.js"
+  },
+  "dependencies": {
+    "chromedriver": "^120.0.0",
+    "exceljs": "^4.4.0",
+    "mocha": "^10.2.0",
+    "selenium-webdriver": "^4.16.0"
+  }
+}
