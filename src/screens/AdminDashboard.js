@@ -798,7 +798,7 @@ const AdminDashboard = ({ onLogout }) => {
               percent={occupancyPercent}
               color={occupancyConfig.color}
             />
-            <Text style={styles.donutLabel}>Occupied</Text>
+            <Text style={styles.donutLabel}>Live Occupancy</Text>
           </View>
 
           <View style={styles.statsColumn}>
@@ -807,7 +807,7 @@ const AdminDashboard = ({ onLogout }) => {
             >
               <View style={styles.statHeader}>
                 <Ticket size={16} color={Colors.primary} />
-                <Text style={styles.statLabel}>Booked</Text>
+                <Text style={styles.statLabel}>Online Pre-Bookings</Text>
               </View>
               <Text style={styles.statValue}>{bookedSeats} seats</Text>
             </View>
@@ -820,7 +820,7 @@ const AdminDashboard = ({ onLogout }) => {
                   size={16}
                   color={seatsAvailable === 0 ? Colors.danger : Colors.success}
                 />
-                <Text style={styles.statLabel}>Available</Text>
+                <Text style={styles.statLabel}>Available (Live)</Text>
               </View>
               <Text
                 style={[

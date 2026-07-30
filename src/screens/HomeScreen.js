@@ -229,8 +229,7 @@ const HomeScreen = ({ onLogout }) => {
     if (!fromStop.trim() || !toStop.trim()) { Alert.alert("Required", "Please select both Start and Destination stops."); return; }
     setCurrentScreen("results");
   };
-  const routeFare = (r) => Math.round((r.stops?.length || 3) * 8 + 15);
-
+const routeFare = (r) => Math.round((r.totalDistance || 15) * 3.5 + 15);
   // ═══════════════════════════════════════════════════════════════════════════
   // RESULTS SCREEN
   // ═══════════════════════════════════════════════════════════════════════════

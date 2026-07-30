@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   security-events: write
   actions: read
 
@@ -28,7 +28,12 @@ jobs:
       - name: Run npm audit
         run: |
           mkdir -p "Code Quality Reports"
-          npm audit --json > "Code Quality Reports/npm-audit-results.json" || true
+          if [ -f "package.json" ]; then
+            npm audit --json > "Code Quality Reports/npm-audit-results.json" || true
+          elif [ -f "Bus Management System/package.json" ]; then
+            cd "Bus Management System"
+            npm audit --json > "../Code Quality Reports/npm-audit-results.json" || true
+          fi
 
       - name: Upload Code Quality Artifacts
         uses: actions/upload-artifact@v4
@@ -54,6 +59,9 @@ jobs:
         run: |
           if [ -f "load-tests/run-benchmark.js" ]; then
             node load-tests/run-benchmark.js || true
+          elif [ -f "Bus Management System/load-tests/run-benchmark.js" ]; then
+            cd "Bus Management System"
+            node load-tests/run-benchmark.js || true
           fi
 
       - name: Upload Load Test Summary Artifact
@@ -61,7 +69,9 @@ jobs:
         if: always()
         with:
           name: load-test-summary
-          path: load-tests/summary.md
+          path: |
+            load-tests/summary.md
+            Bus Management System/load-tests/summary.md
 
   appium-e2e-tests:
     name: 3. Appium E2E Tests
@@ -82,6 +92,10 @@ jobs:
             cd appium-tests
             npm install --no-save || true
             node generate-report.js || true
+          elif [ -d "Bus Management System/appium-tests" ]; then
+            cd "Bus Management System/appium-tests"
+            npm install --no-save || true
+            node generate-report.js || true
           fi
 
       - name: Upload Appium Test Report Excel
@@ -89,35 +103,82 @@ jobs:
         if: always()
         with:
           name: appium-test-report
-          path: appium-tests/appium-test-report.xlsx
+          path: |
+            appium-tests/appium-test-report.xlsx
+            Bus Management System/appium-tests/appium-test-report.xlsx
 
   selenium-e2e-tests:
-    name: 4. Selenium E2E Tests
+    name: 4. Selenium E2E Tests & Markdown Reports
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
         with:
-          node-version: 18
+          fetch-depth: 0
 
-      - name: Generate Selenium Test Report
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install openpyxl
+
+      - name: Generate Selenium Excel Report
         run: |
           if [ -d "selenium-tests" ]; then
             cd selenium-tests
             npm install --no-save || true
             node generate-report.js || true
+          elif [ -d "Bus Management System/selenium-tests" ]; then
+            cd "Bus Management System/selenium-tests"
+            npm install --no-save || true
+            node generate-report.js || true
           fi
 
-      - name: Upload Selenium Test Report Excel
+      - name: Run generate_md_report.py
+        run: |
+          if [ -f "selenium-tests/scripts/generate_md_report.py" ]; then
+            python selenium-tests/scripts/generate_md_report.py
+          elif [ -f "Bus Management System/selenium-tests/scripts/generate_md_report.py" ]; then
+            cd "Bus Management System"
+            python selenium-tests/scripts/generate_md_report.py
+          fi
+
+      - name: Publish Markdown Reports to GitHub Actions Step Summary
+        run: |
+          if [ -f "selenium-tests/reports/test-summary.md" ]; then
+            cat selenium-tests/reports/test-summary.md >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat selenium-tests/reports/test-details.md >> $GITHUB_STEP_SUMMARY
+          elif [ -f "Bus Management System/selenium-tests/reports/test-summary.md" ]; then
+            cat "Bus Management System/selenium-tests/reports/test-summary.md" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat "Bus Management System/selenium-tests/reports/test-details.md" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Commit & Push Regenerated Markdown Reports
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add selenium-tests/reports/
+          git add "Bus Management System/selenium-tests/reports/" || true
+          git commit -m "chore(ci): update Selenium E2E Markdown test reports [skip ci]" || echo "No changes to commit"
+          git push
+
+      - name: Upload Selenium Test Report Artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: selenium-test-report
-          path: selenium-tests/selenium-test-report.xlsx
+          path: |
+            selenium-tests/selenium-test-report.xlsx
+            selenium-tests/reports/
+            Bus Management System/selenium-tests/selenium-test-report.xlsx
+            Bus Management System/selenium-tests/reports/
 
   combined-summary:
     name: Combined Test Summary
@@ -140,7 +201,7 @@ jobs:
           echo "- \`code-quality-reports\` (SARIF & JSON audit data)" >> combined-summary.md
           echo "- \`load-test-summary\` (\`summary.md\` with RPS & latencies)" >> combined-summary.md
           echo "- \`appium-test-report\` (\`appium-test-report.xlsx\` - 310 test cases)" >> combined-summary.md
-          echo "- \`selenium-test-report\` (\`selenium-test-report.xlsx\` - 310 test cases)" >> combined-summary.md
+          echo "- \`selenium-test-report\` (\`selenium-test-report.xlsx\` & \`reports/\` Markdown files)" >> combined-summary.md
 
       - name: Publish Summary to GitHub Actions
         run: cat combined-summary.md >> $GITHUB_STEP_SUMMARY
