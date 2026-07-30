@@ -343,19 +343,19 @@ if __name__ == "__main__":
 
     for idx, tc in enumerate(cases, start=1):
         # Assuming 'status' is set during execution, or default to "PASSED"
-status = "PASSED"  # Replace with actual test result evaluation if using dynamic test runs
+        status = "PASSED"  # Replace with actual test result evaluation if using dynamic test runs
 
-print(f"================================================== - generate_appium_excel.py:348")
-print(f"[{i}/310] {tc_id}  STATUS: {status} - generate_appium_excel.py:349")
-print(f"ID: {tc_id} - generate_appium_excel.py:350")
-print(f"Module: {tc['module']} - generate_appium_excel.py:351")
-print(f"Title: {tc['scenario']} - generate_appium_excel.py:352")
-print(f"Type: {tc['type']} | Priority: {tc['priority']} | Automated: {tc['automated']} - generate_appium_excel.py:353")
-print(f"Preconditions: {tc['precondition']} - generate_appium_excel.py:354")
-print(f"Steps:\n{tc['steps']} - generate_appium_excel.py:355")
-print(f"Expected Result: {tc['expected']} - generate_appium_excel.py:356")
-print(f"Result: {status} - generate_appium_excel.py:357")
-print(f"================================================== - generate_appium_excel.py:358")
+        print(f"================================================== - generate_appium_excel.py:348")
+        print(f"[{idx}/310] {tc['id']}  STATUS: {status} - generate_appium_excel.py:349")
+        print(f"ID: {tc['id']} - generate_appium_excel.py:350")
+        print(f"Module: {tc['module']} - generate_appium_excel.py:351")
+        print(f"Title: {tc['scenario']} - generate_appium_excel.py:352")
+        print(f"Type: {tc['type']} | Priority: {tc['priority']} | Automated: {tc['automated']} - generate_appium_excel.py:353")
+        print(f"Preconditions: {tc['precondition']} - generate_appium_excel.py:354")
+        print(f"Steps:\n{tc['steps']} - generate_appium_excel.py:355")
+        print(f"Expected Result: {tc['expected']} - generate_appium_excel.py:356")
+        print(f"Result: {status} - generate_appium_excel.py:357")
+        print(f"================================================== - generate_appium_excel.py:358")
 
     modules = [
         {"name": "1. Welcome & Onboarding", "total": 40, "automated": 40, "manual": 0, "target": "100%", "status": "READY"},
