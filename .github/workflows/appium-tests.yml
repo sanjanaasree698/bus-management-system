@@ -29,6 +29,13 @@ jobs:
         run: |
           python reports/generate_appium_excel.py appium_test_analysis.xlsx
 
+      - name: Publish Appium Coverage Step Summary
+        if: always()
+        run: |
+          if [ -f "appium_summary.md" ]; then
+            cat appium_summary.md >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Upload Appium Test Analysis Excel Artifact
         uses: actions/upload-artifact@v4
         if: always()
