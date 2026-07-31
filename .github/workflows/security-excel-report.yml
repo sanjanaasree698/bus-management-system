@@ -1,0 +1,43 @@
+name: Security Test Analysis Report Generator
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate-security-excel:
+    name: Generate Security Excel Analysis Report
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install openpyxl pandas
+
+      - name: Execute Security Excel Generation Script
+        run: |
+          python reports/generate_security_excel.py security_test_analysis.xlsx | tee security_log.txt
+
+      - name: Publish Security Coverage Step Summary
+        if: always()
+        run: |
+          if [ -f "security_summary.md" ]; then
+            cat security_summary.md >> $GITHUB_STEP_SUMMARY
+          fi
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          cat security_log.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Security Test Analysis Excel Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-test-analysis-excel
+          path: security_test_analysis.xlsx
