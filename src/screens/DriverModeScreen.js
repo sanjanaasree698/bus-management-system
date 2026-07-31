@@ -46,6 +46,7 @@ export default function DriverModeScreen() {
   const [scannerVisible, setScannerVisible] = useState(false);
   const [scannedTicket, setScannedTicket] = useState(null);
   const [scanning, setScanning] = useState(false);
+  const isScanningRef = useRef(false);
 
   // Camera Permissions
   const [permission, requestPermission] = useCameraPermissions();
@@ -109,7 +110,8 @@ export default function DriverModeScreen() {
 
   // Handle QR Scan
   const handleQRScanned = async ({ data }) => {
-    if (scanning) return;
+    if (isScanningRef.current || scanning) return;
+    isScanningRef.current = true;
     setScanning(true);
 
     try {
@@ -209,6 +211,7 @@ export default function DriverModeScreen() {
         [{ text: "Try Again", style: "default" }],
       );
     } finally {
+      isScanningRef.current = false;
       setScanning(false);
     }
   };
@@ -231,11 +234,13 @@ export default function DriverModeScreen() {
     }
     setScannerVisible(true);
     setScanning(false);
+    isScanningRef.current = false;
   };
 
   const handleScannerClose = () => {
     setScannerVisible(false);
     setScanning(false);
+    isScanningRef.current = false;
   };
 
   const handleCloseTicketDetails = () => {
