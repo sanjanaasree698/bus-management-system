@@ -968,73 +968,39 @@ const AdminDashboard = ({ onLogout }) => {
           </View>
         </View>
 
-        {/* Route 1 Activity Log */}
+        {/* Activity Log */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Route 1 Activity Log</Text>
+          <Text style={styles.sectionTitle}>Activity Log</Text>
         </View>
         {(() => {
-          const route1Log = logsList.find(log => log.route_id === "Route 1" || log.route_id === "route1");
-          if (!route1Log) {
+          if (!logsList || logsList.length === 0) {
             return (
               <View style={[styles.card, styles.emptyCard]}>
                 <ClipboardList size={40} color={Colors.textTertiary} />
-                <Text style={styles.emptyText}>No activity recorded for Route 1</Text>
+                <Text style={styles.emptyText}>No activity recorded yet</Text>
               </View>
             );
           }
+          const latestLog = [...logsList].sort(
+            (a, b) => new Date(b.scannedAt) - new Date(a.scannedAt)
+          )[0];
           return (
             <View style={styles.logItem}>
               <View
                 style={[
                   styles.logIndicator,
-                  { backgroundColor: route1Log.type === "ENTRY" ? Colors.success : route1Log.type === "EXIT" ? Colors.danger : Colors.warning },
+                  { backgroundColor: latestLog.type === "ENTRY" ? Colors.success : latestLog.type === "EXIT" ? Colors.danger : Colors.warning },
                 ]}
               />
               <View style={styles.logContent}>
                 <Text style={styles.logType}>
-                  {route1Log.type === "ENTRY" ? "Boarding" : route1Log.type === "EXIT" ? "Alighting" : "System"}
+                  {latestLog.type === "ENTRY" ? "Boarding" : latestLog.type === "EXIT" ? "Alighting" : "System"}
                 </Text>
-                <Text style={styles.logDetail}>54 passengers</Text>
+                <Text style={styles.logDetail}>{latestLog.passengerCount} passengers</Text>
               </View>
               <View style={styles.logRight}>
-                <Text style={styles.logTime}>{route1Log.time}</Text>
-                <Text style={styles.logId}>#300</Text>
-              </View>
-            </View>
-          );
-        })()}
-
-        {/* Route 2 Activity Log */}
-        <View style={[styles.sectionHeader, { marginTop: 15 }]}>
-          <Text style={styles.sectionTitle}>Route 2 Activity Log</Text>
-        </View>
-        {(() => {
-          const route2Log = logsList.find(log => log.route_id === "Route 2" || log.route_id === "route2");
-          if (!route2Log) {
-            return (
-              <View style={[styles.card, styles.emptyCard]}>
-                <ClipboardList size={40} color={Colors.textTertiary} />
-                <Text style={styles.emptyText}>No activity recorded for Route 2</Text>
-              </View>
-            );
-          }
-          return (
-            <View style={styles.logItem}>
-              <View
-                style={[
-                  styles.logIndicator,
-                  { backgroundColor: route2Log.type === "ENTRY" ? Colors.success : route2Log.type === "EXIT" ? Colors.danger : Colors.warning },
-                ]}
-              />
-              <View style={styles.logContent}>
-                <Text style={styles.logType}>
-                  {route2Log.type === "ENTRY" ? "Boarding" : route2Log.type === "EXIT" ? "Alighting" : "System"}
-                </Text>
-                <Text style={styles.logDetail}>{route2Log.count} passengers</Text>
-              </View>
-              <View style={styles.logRight}>
-                <Text style={styles.logTime}>{route2Log.time}</Text>
-                <Text style={styles.logId}>#{route2Log.id}</Text>
+                <Text style={styles.logTime}>{latestLog.timestamp}</Text>
+                <Text style={styles.logId}>#{latestLog.ticketId?.slice(-6) || "N/A"}</Text>
               </View>
             </View>
           );
