@@ -36,6 +36,8 @@ const Colors = {
   border: "#E2E8F0",
 };
 
+let isGlobalScanningLock = false;
+
 export default function DriverModeScreen() {
   // Core States
   const [passengers, setPassengers] = useState(0);
@@ -46,7 +48,6 @@ export default function DriverModeScreen() {
   const [scannerVisible, setScannerVisible] = useState(false);
   const [scannedTicket, setScannedTicket] = useState(null);
   const [scanning, setScanning] = useState(false);
-  const isScanningRef = useRef(false);
 
   // Camera Permissions
   const [permission, requestPermission] = useCameraPermissions();
@@ -110,8 +111,8 @@ export default function DriverModeScreen() {
 
   // Handle QR Scan
   const handleQRScanned = async ({ data }) => {
-    if (isScanningRef.current || scanning) return;
-    isScanningRef.current = true;
+    if (isGlobalScanningLock || scanning) return;
+    isGlobalScanningLock = true;
     setScanning(true);
 
     try {
@@ -211,7 +212,7 @@ export default function DriverModeScreen() {
         [{ text: "Try Again", style: "default" }],
       );
     } finally {
-      isScanningRef.current = false;
+      isGlobalScanningLock = false;
       setScanning(false);
     }
   };
@@ -234,13 +235,13 @@ export default function DriverModeScreen() {
     }
     setScannerVisible(true);
     setScanning(false);
-    isScanningRef.current = false;
+    isGlobalScanningLock = false;
   };
 
   const handleScannerClose = () => {
     setScannerVisible(false);
     setScanning(false);
-    isScanningRef.current = false;
+    isGlobalScanningLock = false;
   };
 
   const handleCloseTicketDetails = () => {
