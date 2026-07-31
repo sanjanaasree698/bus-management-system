@@ -115,7 +115,7 @@ def build_test_cases():
         for b_idx, base in enumerate(mod["bases"]):
             for c_idx, context in enumerate(contexts_data):
                 
-                scenario_title = f"{base[0]} with {context[0]}"
+                scenario_title = f"{mod['name']} - {base[0]} with {context[0]}"
                 precond = context[1]
                 steps = base[1]
                 expected = base[2]
