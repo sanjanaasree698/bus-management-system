@@ -376,7 +376,11 @@ const AdminDashboard = ({ onLogout }) => {
               count: item.passengerCount ?? 0,
               time: item.timestamp?.split(" ")[1] || "00:00:00",
               date: item.timestamp?.split(" ")[0] || "25/05/2026",
-              route_id: item.route_id || (parseInt(key.replace("log_", "")) % 2 === 0 ? "Route 2" : "Route 1")
+              route_id: item.route_id || null,
+              passengerCount: item.passengerCount ?? 0,
+              scannedAt: item.scannedAt || null,
+              ticketId: item.ticketId || key,
+              timestamp: item.timestamp || ""
             };
           })
           .filter(Boolean)
