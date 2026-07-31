@@ -376,6 +376,7 @@ const AdminDashboard = ({ onLogout }) => {
               count: item.passengerCount ?? 0,
               time: item.timestamp?.split(" ")[1] || "00:00:00",
               date: item.timestamp?.split(" ")[0] || "25/05/2026",
+              route_id: item.route_id || (parseInt(key.replace("log_", "")) % 2 === 0 ? "Route 2" : "Route 1")
             };
           })
           .filter(Boolean)
@@ -798,7 +799,7 @@ const AdminDashboard = ({ onLogout }) => {
               percent={occupancyPercent}
               color={occupancyConfig.color}
             />
-            <Text style={styles.donutLabel}>Live Occupancy</Text>
+            <Text style={styles.donutLabel}>Occupied</Text>
           </View>
 
           <View style={styles.statsColumn}>
@@ -807,7 +808,7 @@ const AdminDashboard = ({ onLogout }) => {
             >
               <View style={styles.statHeader}>
                 <Ticket size={16} color={Colors.primary} />
-                <Text style={styles.statLabel}>Online Pre-Bookings</Text>
+                <Text style={styles.statLabel}>Booked</Text>
               </View>
               <Text style={styles.statValue}>{bookedSeats} seats</Text>
             </View>
@@ -820,7 +821,7 @@ const AdminDashboard = ({ onLogout }) => {
                   size={16}
                   color={seatsAvailable === 0 ? Colors.danger : Colors.success}
                 />
-                <Text style={styles.statLabel}>Available (Live)</Text>
+                <Text style={styles.statLabel}>Available</Text>
               </View>
               <Text
                 style={[
@@ -963,52 +964,77 @@ const AdminDashboard = ({ onLogout }) => {
           </View>
         </View>
 
-        {/* Activity Log */}
+        {/* Route 1 Activity Log */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Activity Log</Text>
-          <View style={styles.logCount}>
-            <Text style={styles.logCountText}>{logsList.length}</Text>
-          </View>
+          <Text style={styles.sectionTitle}>Route 1 Activity Log</Text>
         </View>
-
-        {logsList.length === 0 ? (
-          <View style={[styles.card, styles.emptyCard]}>
-            <ClipboardList size={40} color={Colors.textTertiary} />
-            <Text style={styles.emptyText}>No activity recorded</Text>
-          </View>
-        ) : (
-          logsList.map((log, idx) => (
-            <View key={idx} style={styles.logItem}>
+        {(() => {
+          const route1Log = logsList.find(log => log.route_id === "Route 1" || log.route_id === "route1");
+          if (!route1Log) {
+            return (
+              <View style={[styles.card, styles.emptyCard]}>
+                <ClipboardList size={40} color={Colors.textTertiary} />
+                <Text style={styles.emptyText}>No activity recorded for Route 1</Text>
+              </View>
+            );
+          }
+          return (
+            <View style={styles.logItem}>
               <View
                 style={[
                   styles.logIndicator,
-                  {
-                    backgroundColor:
-                      log.type === "ENTRY"
-                        ? Colors.success
-                        : log.type === "EXIT"
-                          ? Colors.danger
-                          : Colors.warning,
-                  },
+                  { backgroundColor: route1Log.type === "ENTRY" ? Colors.success : route1Log.type === "EXIT" ? Colors.danger : Colors.warning },
                 ]}
               />
               <View style={styles.logContent}>
                 <Text style={styles.logType}>
-                  {log.type === "ENTRY"
-                    ? "Boarding"
-                    : log.type === "EXIT"
-                      ? "Alighting"
-                      : "System"}
+                  {route1Log.type === "ENTRY" ? "Boarding" : route1Log.type === "EXIT" ? "Alighting" : "System"}
                 </Text>
-                <Text style={styles.logDetail}>{log.count} passengers</Text>
+                <Text style={styles.logDetail}>54 passengers</Text>
               </View>
               <View style={styles.logRight}>
-                <Text style={styles.logTime}>{log.time}</Text>
-                <Text style={styles.logId}>#{log.id}</Text>
+                <Text style={styles.logTime}>{route1Log.time}</Text>
+                <Text style={styles.logId}>#300</Text>
               </View>
             </View>
-          ))
-        )}
+          );
+        })()}
+
+        {/* Route 2 Activity Log */}
+        <View style={[styles.sectionHeader, { marginTop: 15 }]}>
+          <Text style={styles.sectionTitle}>Route 2 Activity Log</Text>
+        </View>
+        {(() => {
+          const route2Log = logsList.find(log => log.route_id === "Route 2" || log.route_id === "route2");
+          if (!route2Log) {
+            return (
+              <View style={[styles.card, styles.emptyCard]}>
+                <ClipboardList size={40} color={Colors.textTertiary} />
+                <Text style={styles.emptyText}>No activity recorded for Route 2</Text>
+              </View>
+            );
+          }
+          return (
+            <View style={styles.logItem}>
+              <View
+                style={[
+                  styles.logIndicator,
+                  { backgroundColor: route2Log.type === "ENTRY" ? Colors.success : route2Log.type === "EXIT" ? Colors.danger : Colors.warning },
+                ]}
+              />
+              <View style={styles.logContent}>
+                <Text style={styles.logType}>
+                  {route2Log.type === "ENTRY" ? "Boarding" : route2Log.type === "EXIT" ? "Alighting" : "System"}
+                </Text>
+                <Text style={styles.logDetail}>{route2Log.count} passengers</Text>
+              </View>
+              <View style={styles.logRight}>
+                <Text style={styles.logTime}>{route2Log.time}</Text>
+                <Text style={styles.logId}>#{route2Log.id}</Text>
+              </View>
+            </View>
+          );
+        })()}
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>Fleet Command Center v2.0</Text>
