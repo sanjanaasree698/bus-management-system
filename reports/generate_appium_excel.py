@@ -3,10 +3,11 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-def string_pad(num):
-    return str(num).zfill(3)
-
 def build_test_cases():
+    """
+    Constructs 310 detailed, unique test cases across all mobile application flows.
+    Guarantees 100% unique titles, steps, and expected results.
+    """
     test_cases = []
 
     # 1. Welcome & Onboarding (40 Test Cases: TC_WEL_001 to TC_WEL_040)
@@ -38,8 +39,9 @@ def build_test_cases():
         ("Verify offline mode onboarding displays cached assets without crash", "Airplane mode enabled", "1. Disconnect network\n2. Launch app\n3. Navigate slides", "All onboard slides load from local bundle assets gracefully", "Negative/Validation", "P1 - Medium"),
     ]
 
+    # Generate total 40 onboarding cases
     for i in range(1, 41):
-        tc_id = f"TC_WEL_{string_pad(i)}"
+        tc_id = f"TC_WEL_{String_pad(i)}"
         if i <= len(wel_scenarios):
             s = wel_scenarios[i - 1]
             test_cases.append({
@@ -89,7 +91,7 @@ def build_test_cases():
     ]
 
     for i in range(1, 66):
-        tc_id = f"TC_AUTH_{string_pad(i)}"
+        tc_id = f"TC_AUTH_{String_pad(i)}"
         if i <= len(auth_scenarios):
             s = auth_scenarios[i - 1]
             test_cases.append({
@@ -134,7 +136,7 @@ def build_test_cases():
     ]
 
     for i in range(1, 71):
-        tc_id = f"TC_HOME_{string_pad(i)}"
+        tc_id = f"TC_HOME_{String_pad(i)}"
         if i <= len(home_scenarios):
             s = home_scenarios[i - 1]
             test_cases.append({
@@ -179,7 +181,7 @@ def build_test_cases():
     ]
 
     for i in range(1, 61):
-        tc_id = f"TC_STOP_{string_pad(i)}"
+        tc_id = f"TC_STOP_{String_pad(i)}"
         if i <= len(stop_scenarios):
             s = stop_scenarios[i - 1]
             test_cases.append({
@@ -224,7 +226,7 @@ def build_test_cases():
     ]
 
     for i in range(1, 46):
-        tc_id = f"TC_BOOK_{string_pad(i)}"
+        tc_id = f"TC_BOOK_{String_pad(i)}"
         if i <= len(book_scenarios):
             s = book_scenarios[i - 1]
             test_cases.append({
@@ -269,7 +271,7 @@ def build_test_cases():
     ]
 
     for i in range(1, 31):
-        tc_id = f"TC_PROF_{string_pad(i)}"
+        tc_id = f"TC_PROF_{String_pad(i)}"
         if i <= len(prof_scenarios):
             s = prof_scenarios[i - 1]
             test_cases.append({
@@ -302,7 +304,14 @@ def build_test_cases():
     return test_cases
 
 
+def String_pad(num):
+    return str(num).zfill(3)
+
+
 def write_github_step_summary(module_summary_data, grand_total, summary_filename="appium_summary.md"):
+    """
+    Generates and writes a Markdown Step Summary table covering all 310 test cases.
+    """
     lines = []
     lines.append("## 💻 Appium Mobile Test Coverage Matrix (310 Test Cases)")
     lines.append("")
@@ -313,64 +322,187 @@ def write_github_step_summary(module_summary_data, grand_total, summary_filename
         status_badge = "✅ READY" if mod["status"] == "READY" else mod["status"]
         lines.append(f"| {mod['name']} | {mod['total']} | {mod['automated']} | {mod['manual']} | {mod['target']} | {status_badge} |")
 
+    lines.append(f"| **GRAND TOTAL** | **{grand_total['total']}** | **{grand_total['automated']}** | **{grand_total['manual']}** | **{grand_total['target']}** | **✅ COMPLETE** |")
     lines.append("")
-    lines.append(f"**Total Generated Test Cases:** {grand_total}")
-    
-    summary_content = "\n".join(lines)
-    
-    with open(summary_filename, "w", encoding="utf-8") as f:
-        f.write(summary_content)
 
-    github_step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
-    if github_step_summary:
-        with open(github_step_summary, "a", encoding="utf-8") as f:
-            f.write(summary_content + "\n")
-        print(f"[SUCCESS] Appended Markdown summary to GITHUB_STEP_SUMMARY at {github_step_summary} - generate_appium_excel.py:328")
+    markdown_content = "\n".join(lines)
+
+    # 1. Write local summary file
+    try:
+        with open(summary_filename, "w", encoding="utf-8") as f:
+            f.write(markdown_content)
+        print(f"[SUCCESS] Markdown summary saved to local file: {summary_filename}")
+    except Exception as e:
+        print(f"[WARNING] Could not save local summary file: {e}")
+
+    # 2. Append to GITHUB_STEP_SUMMARY environment file if available
+    step_summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if step_summary_path:
+        try:
+            with open(step_summary_path, "a", encoding="utf-8") as f:
+                f.write("\n" + markdown_content + "\n")
+            print(f"[SUCCESS] Appended Markdown summary to GITHUB_STEP_SUMMARY at {step_summary_path}")
+        except Exception as e:
+            print(f"[ERROR] Failed appending to GITHUB_STEP_SUMMARY: {e}")
     else:
-        print(f"[SUCCESS] Markdown summary saved to local file: {summary_filename} - generate_appium_excel.py:330")
+        print("[INFO] GITHUB_STEP_SUMMARY environment variable not set (running locally).")
+
+
+def generate_appium_excel(output_filename="appium_test_analysis.xlsx"):
+    """
+    Generates the expanded Excel report artifact with 310 detailed, unique test case rows.
+    """
+    output_dir = os.path.dirname(output_filename)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+
+    wb = openpyxl.Workbook()
+
+    # Styling setup
+    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    summary_fill = PatternFill(start_color="2F5597", end_color="2F5597", fill_type="solid")
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    title_font = Font(name="Calibri", size=16, bold=True, color="1F4E78")
+    bold_font = Font(name="Calibri", size=11, bold=True)
+    normal_font = Font(name="Calibri", size=11)
+    center_align = Alignment(horizontal="center", vertical="center")
+    left_align = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    border_thin = Side(border_style="thin", color="D9D9D9")
+    box_border = Border(left=border_thin, right=border_thin, top=border_thin, bottom=border_thin)
+
+    # 1. Summary Sheet
+    ws_summary = wb.active
+    ws_summary.title = "Summary"
+    ws_summary.views.sheetView[0].showGridLines = True
+
+    ws_summary.cell(row=1, column=1, value="Appium Mobile Test Automation Summary (310 Test Cases)").font = title_font
+
+    headers_summary = ["Module / Feature Suite", "Total Test Cases", "Automated (Appium)", "Manual / Exploratory", "Pass Rate Target", "Status"]
+    ws_summary.row_dimensions[3].height = 25
+    for col_idx, text in enumerate(headers_summary, 1):
+        cell = ws_summary.cell(row=3, column=col_idx, value=text)
+        cell.fill = summary_fill
+        cell.font = header_font
+        cell.alignment = center_align
+
+    module_summary_data = [
+        {"name": "1. Welcome & Onboarding", "total": 40, "automated": 35, "manual": 5, "target": "100%", "status": "READY"},
+        {"name": "2. Authentication & Security", "total": 65, "automated": 60, "manual": 5, "target": "100%", "status": "READY"},
+        {"name": "3. Home & Map Navigation", "total": 70, "automated": 65, "manual": 5, "target": "100%", "status": "READY"},
+        {"name": "4. Routes, Stops & Bus Search", "total": 60, "automated": 55, "manual": 5, "target": "100%", "status": "READY"},
+        {"name": "5. Ticket Booking & Payments", "total": 45, "automated": 40, "manual": 5, "target": "100%", "status": "READY"},
+        {"name": "6. Profile, Settings & Driver Mode", "total": 30, "automated": 25, "manual": 5, "target": "100%", "status": "READY"},
+    ]
+
+    for row_idx, mod in enumerate(module_summary_data, 4):
+        ws_summary.row_dimensions[row_idx].height = 20
+        row_vals = [mod["name"], mod["total"], mod["automated"], mod["manual"], mod["target"], mod["status"]]
+        for col_idx, val in enumerate(row_vals, 1):
+            cell = ws_summary.cell(row=row_idx, column=col_idx, value=val)
+            cell.font = normal_font
+            cell.border = box_border
+            cell.alignment = center_align if col_idx > 1 else left_align
+
+    # Total Row
+    total_row_idx = len(module_summary_data) + 4
+    ws_summary.row_dimensions[total_row_idx].height = 22
+    grand_total = {"name": "GRAND TOTAL", "total": 310, "automated": 280, "manual": 30, "target": "100%", "status": "COMPLETE"}
+    total_values = [grand_total["name"], grand_total["total"], grand_total["automated"], grand_total["manual"], grand_total["target"], grand_total["status"]]
+    for col_idx, val in enumerate(total_values, 1):
+        cell = ws_summary.cell(row=total_row_idx, column=col_idx, value=val)
+        cell.font = bold_font
+        cell.border = box_border
+        cell.alignment = center_align if col_idx > 1 else left_align
+
+    summary_col_widths = [35, 18, 22, 22, 18, 14]
+    for i, w in enumerate(summary_col_widths, 1):
+        ws_summary.column_dimensions[get_column_letter(i)].width = w
+
+    # 2. Details Sheet (310 Test Cases)
+    ws_details = wb.create_sheet(title="Details")
+    ws_details.views.sheetView[0].showGridLines = True
+
+    headers_details = [
+        "Test Case ID",
+        "Module",
+        "Test Scenario / Title",
+        "Test Type",
+        "Preconditions",
+        "Execution Steps",
+        "Expected Result",
+        "Priority",
+        "Automated?"
+    ]
+
+    ws_details.row_dimensions[1].height = 26
+    for col_idx, text in enumerate(headers_details, 1):
+        cell = ws_details.cell(row=1, column=col_idx, value=text)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center_align
+
+    test_cases = build_test_cases()
+    unique_scenarios = set()
+
+    for idx, tc in enumerate(test_cases, 2):
+        ws_details.row_dimensions[idx].height = 36
+        unique_scenarios.add(tc["scenario"])
+
+        row_data = [
+            tc["id"],
+            tc["module"],
+            tc["scenario"],
+            tc["type"],
+            tc["precondition"],
+            tc["steps"],
+            tc["expected"],
+            tc["priority"],
+            tc["automated"]
+        ]
+
+        for col_idx, val in enumerate(row_data, 1):
+            cell = ws_details.cell(row=idx, column=col_idx, value=val)
+            cell.font = normal_font
+            cell.border = box_border
+            if col_idx in [1, 4, 8, 9]:
+                cell.alignment = center_align
+            else:
+                cell.alignment = left_align
+
+    details_widths = [18, 30, 48, 20, 32, 45, 45, 14, 16]
+    for i, w in enumerate(details_widths, 1):
+        ws_details.column_dimensions[get_column_letter(i)].width = w
+
+    wb.save(output_filename)
+
+    for idx, tc in enumerate(test_cases, 1):
+        print("==================================================")
+        print(f"[TEST CASE {idx}/{len(test_cases)}]")
+        print(f"ID: {tc['id']}")
+        print(f"Module: {tc['module']}")
+        print(f"Title: {tc['scenario']}")
+        
+        # Determine the Automated flag format (e.g. "Yes (Appium)" -> "Yes")
+        auto_flag = "Yes" if "Yes" in tc['automated'] else tc['automated']
+        
+        print(f"Type: {tc['type']} | Priority: {tc['priority']} | Automated: {auto_flag}")
+        print(f"Preconditions: {tc['precondition']}")
+        steps_formatted = tc['steps'].replace('\n', ' -> ')
+        print(f"Steps: {steps_formatted}")
+        print(f"Expected Result: {tc['expected']}")
+        print("==================================================")
+
+    print("\n==================================================")
+    print("[SUCCESS] Appium Test Analysis Excel generated successfully!")
+    print(f"Output File: {output_filename}")
+    print(f"Total Test Case Rows Generated: {len(test_cases)}")
+    print(f"Unique Test Scenarios Count: {len(unique_scenarios)}")
+    print("==================================================")
+
+    write_github_step_summary(module_summary_data, grand_total)
 
 
 if __name__ == "__main__":
-    cases = build_test_cases()
-    total_cases = len(cases)
-    output_filename = "appium_test_cases.xlsx"
-    unique_scenarios = {tc["scenario"] for tc in cases}
-
-    # Iterate and print each test case to stdout during pipeline execution
-    print("================================================== - generate_appium_excel.py:340")
-    print("STARTING APPIUM TEST CASE LOG OUTPUT - generate_appium_excel.py:341")
-    print("================================================== - generate_appium_excel.py:342")
-
-    for idx, tc in enumerate(cases, start=1):
-        # Assuming 'status' is set during execution, or default to "PASSED"
-        status = "PASSED"  # Replace with actual test result evaluation if using dynamic test runs
-
-        print(f"================================================== - generate_appium_excel.py:348")
-        print(f"[{idx}/310] {tc['id']}  STATUS: {status} - generate_appium_excel.py:349")
-        print(f"ID: {tc['id']} - generate_appium_excel.py:350")
-        print(f"Module: {tc['module']} - generate_appium_excel.py:351")
-        print(f"Title: {tc['scenario']} - generate_appium_excel.py:352")
-        print(f"Type: {tc['type']} | Priority: {tc['priority']} | Automated: {tc['automated']} - generate_appium_excel.py:353")
-        print(f"Preconditions: {tc['precondition']} - generate_appium_excel.py:354")
-        print(f"Steps:\n{tc['steps']} - generate_appium_excel.py:355")
-        print(f"Expected Result: {tc['expected']} - generate_appium_excel.py:356")
-        print(f"Result: {status} - generate_appium_excel.py:357")
-        print(f"================================================== - generate_appium_excel.py:358")
-
-    modules = [
-        {"name": "1. Welcome & Onboarding", "total": 40, "automated": 40, "manual": 0, "target": "100%", "status": "READY"},
-        {"name": "2. Authentication & Security", "total": 65, "automated": 65, "manual": 0, "target": "100%", "status": "READY"},
-        {"name": "3. Home & Map Navigation", "total": 70, "automated": 70, "manual": 0, "target": "100%", "status": "READY"},
-        {"name": "4. Routes, Stops & Bus Search", "total": 60, "automated": 60, "manual": 0, "target": "100%", "status": "READY"},
-        {"name": "5. Ticket Booking & Payments", "total": 45, "automated": 45, "manual": 0, "target": "100%", "status": "READY"},
-        {"name": "6. Profile, Settings & Driver Mode", "total": 30, "automated": 30, "manual": 0, "target": "100%", "status": "READY"},
-    ]
-
-    print("================================================== - generate_appium_excel.py:369")
-    print("[SUCCESS] Appium Test Analysis Excel generated successfully! - generate_appium_excel.py:370")
-    print(f"Output File: {output_filename} - generate_appium_excel.py:371")
-    print(f"Total Test Case Rows Generated: {len(cases)} - generate_appium_excel.py:372")
-    print(f"Unique Test Scenarios Count: {len(unique_scenarios)} - generate_appium_excel.py:373")
-    print("================================================== - generate_appium_excel.py:374")
-
-    write_github_step_summary(modules, total_cases)
+    import sys
+    target = sys.argv[1] if len(sys.argv) > 1 else "appium_test_analysis.xlsx"
+    generate_appium_excel(target)

@@ -1,0 +1,43 @@
+name: Load Test Analysis Report Generator
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate-load-excel:
+    name: Generate Load Excel Analysis Report
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install openpyxl pandas
+
+      - name: Execute Load Excel Generation Script
+        run: |
+          python reports/generate_load_excel.py load_test_analysis.xlsx | tee load_log.txt
+
+      - name: Publish Load Coverage Step Summary
+        if: always()
+        run: |
+          if [ -f "load_summary.md" ]; then
+            cat load_summary.md >> $GITHUB_STEP_SUMMARY
+          fi
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          cat load_log.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Load Test Analysis Excel Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: load-test-analysis-excel
+          path: load_test_analysis.xlsx
