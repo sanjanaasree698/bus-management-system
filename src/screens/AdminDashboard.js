@@ -151,12 +151,14 @@ const AdminDashboard = ({ onLogout }) => {
   const [lastGpsReceiveTime, setLastGpsReceiveTime] = useState(Date.now());
   const [passengerCount, setPassengerCount] = useState(64);
   const [bookedSeats, setBookedSeats] = useState(68);
+  const [routesActivity, setRoutesActivity] = useState({});
   const [speed, setSpeed] = useState(0);
   const [logsList, setLogsList] = useState([]);
   const [stopsList, setStopsList] = useState([]);
   const [routesData, setRoutesData] = useState({});
   const [selectedPredictiveStop, setSelectedPredictiveStop] = useState("");
   const [activeRoute, setActiveRoute] = useState(null);
+  const [globalActiveRouteId, setGlobalActiveRouteId] = useState(null);
   const [smoothedSpeed, setSmoothedSpeed] = useState(0);
   const [mapFullscreen, setMapFullscreen] = useState(false);
   const [toastData, setToastData] = useState(null);
@@ -167,6 +169,10 @@ const AdminDashboard = ({ onLogout }) => {
   const prevLng = useRef(null);
   const prevTimestamp = useRef(null);
   const prevPassengerCount = useRef(null);
+  // Hardware bridge ref - keeps active route ID accessible in async callback
+  const globalActiveRouteIdRef = useRef(null);
+  // Dedicated ref for hardware count comparison (separate from route-based tracking)
+  const prevHwCount = useRef(null);
   const capacity = 70;
   const webViewRef = useRef(null);
   const webViewModalRef = useRef(null);
@@ -327,39 +333,78 @@ const AdminDashboard = ({ onLogout }) => {
       setLoading(false);
     });
 
-    const unsubscribePassengers = onValue(passengersRef, (snapshot) => {
+    const unsubscribePassengers = onValue(ref(db, "routes_activity"), async (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
+        setRoutesActivity(data);
+        
+        // Toast logic - check which route changed
+        Object.keys(data).forEach(routeId => {
+          const routeData = data[routeId];
+          const routeName = routeData.routeName || routeId;
+          const newCount = routeData.count || 0;
+          const prevRouteCount = prevPassengerCount.current ? prevPassengerCount.current[routeId] : null;
+          
+          if (prevRouteCount !== null && prevRouteCount !== newCount) {
+            const diff = newCount - prevRouteCount;
+            if (diff > 0) {
+              showToast(
+                "Boarding Detected",
+                `${diff} passenger(s) entered on ${routeName}`,
+                "info"
+              );
+            } else if (diff < 0) {
+              showToast(
+                "Exit Detected",
+                `${Math.abs(diff)} passenger(s) left from ${routeName}`,
+                "warning"
+              );
+            }
+          }
+        });
+        
+        // Update prev counts
+        const currentCounts = {};
+        Object.keys(data).forEach(k => currentCounts[k] = data[k].count || 0);
+        prevPassengerCount.current = currentCounts;
+      } else {
+        setRoutesActivity({});
+        prevPassengerCount.current = {};
+      }
+    });
+
+    const unsubscribeGlobalRoute = onValue(ref(db, "system_status/active_route_id"), (snap) => {
+      if (snap.exists()) {
+        setGlobalActiveRouteId(snap.val());
+      }
+    });
+
+    // Direct hardware listener - always keeps passengerCount in sync with IR sensor output
+    const unsubscribeHardware = onValue(ref(db, "passengers"), (snap) => {
+      if (snap.exists()) {
+        const data = snap.val();
         const newCount = data.count ?? 0;
-        const newBooked = data.booked ?? 0;
-
         setPassengerCount(newCount);
-        setBookedSeats(newBooked);
+        setBookedSeats(data.booked ?? 0);
 
-        if (
-          prevPassengerCount.current !== null &&
-          prevPassengerCount.current !== newCount
-        ) {
-          const diff = newCount - prevPassengerCount.current;
+        // Toast notification when count changes
+        if (prevHwCount.current !== null && prevHwCount.current !== newCount) {
+          const diff = newCount - prevHwCount.current;
           if (diff > 0) {
             showToast(
               "Boarding Detected",
               `${diff} passenger(s) entered`,
-              "info",
+              "info"
             );
           } else if (diff < 0) {
             showToast(
               "Exit Detected",
               `${Math.abs(diff)} passenger(s) left`,
-              "warning",
+              "warning"
             );
           }
         }
-        prevPassengerCount.current = newCount;
-      } else {
-        setPassengerCount(0);
-        setBookedSeats(0);
-        prevPassengerCount.current = 0;
+        prevHwCount.current = newCount;
       }
     });
 
@@ -398,26 +443,8 @@ const AdminDashboard = ({ onLogout }) => {
           ...routesVal[k],
         }));
 
-        if (parsed.length > 0 && !activeRoute) {
-          setActiveRoute(parsed[0]);
-        }
-
-        const stopsMap = {};
-        parsed.forEach((r) => {
-          r.stops?.forEach((s) => {
-            stopsMap[s.name] = {
-              name: s.name,
-              lat: s.lat || 12.9716,
-              lng: s.lng || 77.5946,
-            };
-          });
-        });
-
-        const list = Object.values(stopsMap);
-        setStopsList(list);
-        if (list.length > 0 && !selectedPredictiveStop) {
-          setSelectedPredictiveStop(list[0].name);
-        }
+        // Do not auto-set activeRoute here. 
+        // We will do it in a separate useEffect that depends on globalActiveRouteId
       }
     });
 
@@ -427,8 +454,76 @@ const AdminDashboard = ({ onLogout }) => {
       unsubscribeLogs();
       unsubscribeRoutes();
       unsubscribeSos();
+      unsubscribeGlobalRoute();
+      unsubscribeHardware();
     };
   }, []);
+
+  // Sync dashboard active route for Station Predictions
+  useEffect(() => {
+    if (globalActiveRouteId) {
+      const parsedRoutes = Object.keys(routesData).map((k) => ({
+        id: k,
+        ...routesData[k],
+      }));
+      
+      const currentRoute = parsedRoutes.find(r => r.id === globalActiveRouteId) 
+        || parsedRoutes.find(r => routesActivity[globalActiveRouteId] && (r.name || "").toLowerCase() === (routesActivity[globalActiveRouteId].routeName || "").toLowerCase()) 
+        || parsedRoutes[0];
+      
+      if (currentRoute) {
+        setActiveRoute(currentRoute);
+
+        const stopsMap = {};
+        currentRoute.stops?.forEach((s) => {
+          stopsMap[s.name] = {
+            name: s.name,
+            lat: s.lat || 12.9716,
+            lng: s.lng || 77.5946,
+          };
+        });
+
+        const list = Object.values(stopsMap);
+        setStopsList(list);
+        if (list.length > 0) {
+          setSelectedPredictiveStop(list[0].name);
+        }
+      }
+    }
+  }, [globalActiveRouteId, routesActivity, routesData]);
+
+  // Keep globalActiveRouteIdRef in sync so the hardware bridge can access it
+  useEffect(() => {
+    globalActiveRouteIdRef.current = globalActiveRouteId;
+  }, [globalActiveRouteId]);
+
+  // Hardware Bridge – mirrors `passengers/count` directly into the active route.
+  // When the hardware IR sensor updates the count, this picks it up and
+  // writes the EXACT same value to routes_activity/[activeRouteId]/count.
+  useEffect(() => {
+    const hwRef = ref(db, "passengers");
+    const unsubscribeHw = onValue(hwRef, async (snap) => {
+      if (!snap.exists()) return;
+      const hwCount = snap.val().count ?? 0;
+
+      const routeId = globalActiveRouteIdRef.current;
+      if (!routeId) return; // No route selected yet in Driver Mode – ignore
+
+      // Directly set the hardware count into the active route
+      const routeRef = ref(db, `routes_activity/${routeId}`);
+      const routeSnap = await get(routeRef);
+      if (routeSnap.exists()) {
+        const current = routeSnap.val();
+        await set(routeRef, {
+          ...current,
+          count: hwCount,
+          lastUpdated: new Date().toISOString(),
+        });
+      }
+    });
+
+    return () => unsubscribeHw();
+  }, []); // runs once – uses ref for routeId
 
   const handleReset = () => {
     Alert.alert(
@@ -972,39 +1067,44 @@ const AdminDashboard = ({ onLogout }) => {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Activity Log</Text>
         </View>
-        {(() => {
-          if (!logsList || logsList.length === 0) {
+
+        {/* Live Passenger Count per Route */}
+        {Object.keys(routesActivity).length > 0 ? (
+          Object.keys(routesActivity).map((routeId) => {
+            const route = routesActivity[routeId];
+            const isActiveRoute = routeId === globalActiveRouteId;
+            // Use live hardware count for the active route, stored count for others
+            const displayCount = isActiveRoute ? passengerCount : (route.count || 0);
             return (
-              <View style={[styles.card, styles.emptyCard]}>
-                <ClipboardList size={40} color={Colors.textTertiary} />
-                <Text style={styles.emptyText}>No activity recorded yet</Text>
+              <View key={routeId} style={[styles.logItem, isActiveRoute && { borderLeftWidth: 3, borderLeftColor: Colors.primary }]}>
+                <View style={[styles.logIndicator, { backgroundColor: isActiveRoute ? Colors.primary : Colors.textTertiary }]} />
+                <View style={styles.logContent}>
+                  <Text style={styles.logType}>
+                    {route.routeName || routeId}
+                    {isActiveRoute ? " 🟢" : ""}
+                  </Text>
+                  <Text style={styles.logDetail}>{displayCount} / {route.capacity || capacity} passengers</Text>
+                </View>
+                <View style={styles.logRight}>
+                  <Text style={styles.logTime}>{isActiveRoute ? new Date().toLocaleTimeString() : (route.lastUpdated ? new Date(route.lastUpdated).toLocaleTimeString() : "—")}</Text>
+                </View>
               </View>
             );
-          }
-          const latestLog = [...logsList].sort(
-            (a, b) => new Date(b.scannedAt) - new Date(a.scannedAt)
-          )[0];
-          return (
-            <View style={styles.logItem}>
-              <View
-                style={[
-                  styles.logIndicator,
-                  { backgroundColor: latestLog.type === "ENTRY" ? Colors.success : latestLog.type === "EXIT" ? Colors.danger : Colors.warning },
-                ]}
-              />
-              <View style={styles.logContent}>
-                <Text style={styles.logType}>
-                  {latestLog.type === "ENTRY" ? "Boarding" : latestLog.type === "EXIT" ? "Alighting" : "System"}
-                </Text>
-                <Text style={styles.logDetail}>{latestLog.passengerCount} passengers</Text>
-              </View>
-              <View style={styles.logRight}>
-                <Text style={styles.logTime}>{latestLog.timestamp}</Text>
-                <Text style={styles.logId}>#{latestLog.ticketId?.slice(-6) || "N/A"}</Text>
-              </View>
+          })
+        ) : (
+          <View style={styles.logItem}>
+            <View style={[styles.logIndicator, { backgroundColor: Colors.primary }]} />
+            <View style={styles.logContent}>
+              <Text style={styles.logType}>Passenger Count</Text>
+              <Text style={styles.logDetail}>{passengerCount} / {capacity} passengers</Text>
             </View>
-          );
-        })()}
+            <View style={styles.logRight}>
+              <Text style={styles.logTime}>{new Date().toLocaleTimeString()}</Text>
+            </View>
+          </View>
+        )}
+
+
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>Fleet Command Center v2.0</Text>

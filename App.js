@@ -216,7 +216,7 @@ export default function App() {
         {studentTab === 'profile' && <ProfileScreen onLogout={handleLogout} />}
       </View>
 
-      <View style={styles.floatingNavContainer}>
+      <View style={styles.floatingNavContainer} pointerEvents="box-none">
         <View style={styles.floatingNav}>
           <AnimatedNavItem
             isActive={studentTab === 'home'}
@@ -297,11 +297,8 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
+    backgroundColor: 'transparent',
+    // No elevation here - elevation adds a white backing on web
   },
   floatingNav: {
     backgroundColor: '#1C1C1E',
@@ -311,6 +308,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 6,
     gap: 6,
+    // Shadow on the pill itself, not the container
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    elevation: 15,
   },
   navItem: {
     width: 44,

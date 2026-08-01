@@ -310,6 +310,7 @@ const RouteSetterScreen = ({ onLogout }) => {
     try {
       const routesRef = ref(db, "routes");
       const newRouteRef = push(routesRef);
+      const newRouteKey = newRouteRef.key;
 
       const payload = {
         name: routeName.trim(),
@@ -320,6 +321,16 @@ const RouteSetterScreen = ({ onLogout }) => {
       };
 
       await set(newRouteRef, payload);
+
+      // Also create a matching routes_activity entry with the SAME key
+      // so DriverModeScreen and StopsScreen can properly match this route
+      const activityRef = ref(db, `routes_activity/${newRouteKey}`);
+      await set(activityRef, {
+        routeName: routeName.trim(),
+        count: 0,
+        capacity: 70,
+        lastUpdated: new Date().toISOString(),
+      });
 
       setRouteName("");
       setSchedules([

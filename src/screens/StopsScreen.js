@@ -86,6 +86,8 @@ const StopsScreen = ({ onNavigate }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStopKey, setSelectedStopKey] = useState('');
   const [userCoords, setUserCoords] = useState(null);
+  const [activeRouteId, setActiveRouteId] = useState(null);
+  const [routesActivity, setRoutesActivity] = useState({});
   
   // Real-time telemetry states
   const [gpsCoords, setGpsCoords] = useState(null);
@@ -99,6 +101,7 @@ const StopsScreen = ({ onNavigate }) => {
   // Fullscreen Modal States
   const [statusModalVisible, setStatusModalVisible] = useState(false);
   const [selectedBus, setSelectedBus] = useState(null);
+  const [selectedBusIsLive, setSelectedBusIsLive] = useState(false);
   const [mapFullscreen, setMapFullscreen] = useState(false);
   
   const webViewRef = useRef(null);
@@ -176,6 +179,9 @@ const StopsScreen = ({ onNavigate }) => {
         const stopsMap = {};
         parsedRoutes.forEach((route) => {
           if (route.stops && route.stops.length > 0) {
+            const routeFare = Math.round((route.totalDistance || 15) * 3.5 + 15);
+            const mockEta = Math.floor(Math.random() * 15) + 3;
+
             route.stops.forEach((stop) => {
               const stopName = stop.name;
               const stopKey = stopName.toLowerCase().replace(/[^a-z0-9]/g, '_');
@@ -189,16 +195,18 @@ const StopsScreen = ({ onNavigate }) => {
                 };
               }
               
-              const routeFare = Math.round((route.stops?.length || 3) * 8 + 15);
-              const mockEta = Math.floor(Math.random() * 15) + 3;
-              
-              stopsMap[stopKey].incomingBuses.push({
-                route: route.name ? route.name.toUpperCase() : "SEC EXPRESS",
-                destination: route.stops[route.stops.length - 1].name,
-                eta: mockEta,
-                price: routeFare,
-                originalRoute: route
-              });
+              // Only add this route ONCE per stop (deduplicate)
+              const alreadyAdded = stopsMap[stopKey].incomingBuses.some(b => b.routeId === route.id);
+              if (!alreadyAdded) {
+                stopsMap[stopKey].incomingBuses.push({
+                  routeId: route.id,
+                  route: route.name ? route.name.toUpperCase() : "SEC EXPRESS",
+                  destination: route.stops[route.stops.length - 1].name,
+                  eta: mockEta,
+                  price: routeFare,
+                  originalRoute: route
+                });
+              }
             });
           }
         });
@@ -238,14 +246,28 @@ const StopsScreen = ({ onNavigate }) => {
         let crowd = 'Low';
         if (cnt >= 30) crowd = 'Medium';
         if (cnt >= 55) crowd = 'High';
-        setLiveTelemetry(prev => ({ ...prev, crowd, passengers: `${cnt}/70` }));
+        setLiveTelemetry(prev => ({ ...prev, crowd, passengers: `${cnt}/70`, rawCount: cnt }));
       }
+    });
+
+    // Listen to active route ID
+    const activeRouteRef = ref(db, 'system_status/active_route_id');
+    const unsubActiveRoute = onValue(activeRouteRef, (snap) => {
+      if (snap.exists()) setActiveRouteId(snap.val());
+    });
+
+    // Listen to routes_activity to get the name of the active route
+    const routesActivityRef = ref(db, 'routes_activity');
+    const unsubRoutesActivity = onValue(routesActivityRef, (snap) => {
+      if (snap.exists()) setRoutesActivity(snap.val());
     });
 
     return () => {
       unsubRoutes();
       unsubGps();
       unsubPass();
+      unsubActiveRoute();
+      unsubRoutesActivity();
     };
   }, []);
 
@@ -310,8 +332,9 @@ const StopsScreen = ({ onNavigate }) => {
     }
   };
 
-  const handleOpenBusStatus = (bus) => {
+  const handleOpenBusStatus = (bus, isLive) => {
     setSelectedBus(bus);
+    setSelectedBusIsLive(isLive);
     setStatusModalVisible(true);
   };
 
@@ -326,7 +349,7 @@ const StopsScreen = ({ onNavigate }) => {
           <Ionicons name="search-outline" size={20} color="#000000" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search SEC bus stops..."
+            placeholder="Search bus stops..."
             placeholderTextColor="#94A3B8"
             value={searchQuery}
             onChangeText={(txt) => {
@@ -391,29 +414,70 @@ const StopsScreen = ({ onNavigate }) => {
             <Text style={styles.emptyText}>No incoming buses scheduled.</Text>
           </View>
         ) : (
-          selectedStop.incomingBuses.map((bus, idx) => (
-            <TouchableOpacity key={idx} style={styles.busItem} onPress={() => handleOpenBusStatus(bus)} activeOpacity={0.95}>
-              {/* Premium Violet badge */}
-              <View style={styles.busRouteBadge}>
-                <Text style={styles.busRouteText}>{bus.route ? bus.route.charAt(0).toUpperCase() : 'B'}</Text>
-              </View>
+          selectedStop.incomingBuses.map((bus, idx) => {
+            // Direct route ID comparison with the active route from Driver Mode
+            // Also fall back to name-based match for legacy routes_activity entries
+            // whose keys may differ from the routes node keys
+            const activeActivityData = activeRouteId ? routesActivity[activeRouteId] : null;
+            const activeActivityName = activeActivityData ? (activeActivityData.routeName || "").toLowerCase() : "";
+            const busRouteNameLower = (bus.route || "").toLowerCase();
+            const isLiveByName = !!(
+              activeRouteId &&
+              activeActivityName &&
+              busRouteNameLower &&
+              (busRouteNameLower.includes(activeActivityName) || activeActivityName.includes(busRouteNameLower))
+            );
+            const isLive = (activeRouteId && bus.routeId === activeRouteId) || isLiveByName;
 
-              {/* Transit Details */}
-              <View style={styles.busDetails}>
-                <Text style={styles.busDest}>{bus.destination}</Text>
-                <Text style={styles.busStopFrom}>Taps for stats • passing next</Text>
-              </View>
-
-              {/* ETA Display */}
-              <View style={styles.etaContainer}>
-                <Text style={styles.etaText}>in {bus.eta} min</Text>
-                <View style={styles.gpsRow}>
-                  <Ionicons name="navigate" size={10} color={GREEN_MILD} style={{ marginRight: 3 }} />
-                  <Text style={styles.gpsText}>GPS Active</Text>
+            // Get live count data from routes_activity for this bus's route
+            // First try direct ID match; fall back to name-based match for legacy entries
+            let routeActivityData = routesActivity[bus.routeId];
+            if (!routeActivityData && isLiveByName && activeActivityData) {
+              routeActivityData = activeActivityData;
+            }
+            
+            // For the active live route, always use the real-time hardware count (like Admin Dashboard does)
+            const liveCount = isLive ? (liveTelemetry.rawCount || 0) : (routeActivityData ? (routeActivityData.count || 0) : 0);
+            const liveCapacity = routeActivityData ? (routeActivityData.capacity || 70) : 70;
+            return (
+              <TouchableOpacity key={idx} style={[styles.busItem, isLive && { borderLeftWidth: 3, borderLeftColor: GREEN_MILD }]} onPress={() => handleOpenBusStatus(bus, isLive)} activeOpacity={0.95}>
+                {/* Route badge */}
+                <View style={[styles.busRouteBadge, !isLive && { backgroundColor: '#94A3B8' }]}>
+                  <Text style={styles.busRouteText}>{bus.route ? bus.route.charAt(0).toUpperCase() : 'B'}</Text>
                 </View>
-              </View>
-            </TouchableOpacity>
-          ))
+
+                {/* Transit Details */}
+                <View style={styles.busDetails}>
+                  <Text style={styles.busDest}>{bus.destination}</Text>
+                  {isLive ? (
+                    <>
+                      <Text style={styles.busStopFrom}>{'🟢 Live • Tap for stats'}</Text>
+                      <Text style={[styles.busStopFrom, { color: GREEN_MILD, fontFamily: 'Poppins_700Bold', marginTop: 2 }]}>
+                        👥 {liveCount}/{liveCapacity} passengers
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={styles.busStopFrom}>{'⬜ Not in service'}</Text>
+                  )}
+                </View>
+
+                {/* ETA Display */}
+                <View style={styles.etaContainer}>
+                  {isLive ? (
+                    <>
+                      <Text style={styles.etaText}>in {bus.eta} min</Text>
+                      <View style={styles.gpsRow}>
+                        <Ionicons name="navigate" size={10} color={GREEN_MILD} style={{ marginRight: 3 }} />
+                        <Text style={styles.gpsText}>GPS Active</Text>
+                      </View>
+                    </>
+                  ) : (
+                    <Text style={[styles.etaText, { color: '#94A3B8', fontSize: 12 }]}>Off Route</Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })
         )}
 
         {/* Live Map Inline Preview */}
@@ -463,18 +527,21 @@ const StopsScreen = ({ onNavigate }) => {
 
                 {/* Floating Stats & Booking Section inside Fullscreen Map */}
                 <View style={styles.modalStatsSection}>
-                  <Text style={styles.modalBusTitle}>SEC Route {selectedBus.route} Live</Text>
+                  <Text style={styles.modalBusTitle}>
+                    Route {selectedBus.route} {selectedBusIsLive ? '🟢 Live' : '⬜ Inactive'}
+                  </Text>
                   <Text style={styles.modalBusSub}>{selectedStop.name} → {selectedBus.destination}</Text>
 
                   {/* Grid stats */}
                   <View style={styles.statsGrid}>
                     <View style={styles.statBox}>
-                      <Text style={styles.statVal}>{liveTelemetry.speed}</Text>
+                      <Text style={styles.statVal}>{selectedBusIsLive ? liveTelemetry.speed : '0 km/h'}</Text>
                       <Text style={styles.statLabel}>Bus Speed</Text>
                     </View>
                     <View style={styles.statDivider} />
                     <View style={styles.statBox}>
-                      <Text style={styles.statVal}>{liveTelemetry.passengers}</Text>
+                      {/* Live route: show real hardware count. Inactive: show 0 */}
+                      <Text style={styles.statVal}>{selectedBusIsLive ? liveTelemetry.passengers : '0/70'}</Text>
                       <Text style={styles.statLabel}>Occupancy</Text>
                     </View>
                     <View style={styles.statDivider} />

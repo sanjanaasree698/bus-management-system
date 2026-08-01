@@ -44,6 +44,10 @@ export default function DriverModeScreen() {
   const [booked, setBooked] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  // Route States
+  const [availableRoutes, setAvailableRoutes] = useState({});
+  const [selectedRouteId, setSelectedRouteId] = useState(null);
+
   // Scanner States
   const [scannerVisible, setScannerVisible] = useState(false);
   const [scannedTicket, setScannedTicket] = useState(null);
@@ -56,15 +60,27 @@ export default function DriverModeScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
   const scanLineAnim = useRef(new Animated.Value(0)).current;
+  // Hardware bridge ref - tracks last known hardware count to compute deltas
+  const prevHardwareCount = useRef(null);
+  // Keep selectedRouteId accessible inside async callbacks
+  const selectedRouteIdRef = useRef(null);
 
-  // Sync passenger data from Firebase
+  // Sync route and passenger data from Firebase
   useEffect(() => {
-    const passRef = ref(db, "passengers");
-    const unsubscribe = onValue(passRef, (snap) => {
+    // Primary: load routes_activity (this node is keyed with the same Firebase IDs as `routes`)
+    const routesActivityRef = ref(db, "routes_activity");
+    const unsubscribeRoutes = onValue(routesActivityRef, (snap) => {
       if (snap.exists()) {
         const data = snap.val();
-        setPassengers(data.count || 0);
-        setBooked(data.booked || 0);
+        setAvailableRoutes(data);
+
+        // Update local booked count if a route is selected
+        if (selectedRouteId && data[selectedRouteId]) {
+          setBooked(data[selectedRouteId].booked || 0);
+          // Note: passengers count is now driven by the hardware listener directly
+        }
+      } else {
+        setAvailableRoutes({});
       }
       setLoading(false);
 
@@ -82,8 +98,95 @@ export default function DriverModeScreen() {
       ]).start();
     });
 
-    return () => unsubscribe();
-  }, []);
+    // Background sync: for any route in `routes` that has no routes_activity entry,
+    // auto-create one with the same key so they stay in sync.
+    const mainRoutesRef = ref(db, "routes");
+    const unsubscribeMainRoutes = onValue(mainRoutesRef, (snap) => {
+      if (!snap.exists()) return;
+      const routesData = snap.val();
+      Object.keys(routesData).forEach(async (routeId) => {
+        const route = routesData[routeId];
+        const routeName = route.name || routeId;
+        const activityRef = ref(db, `routes_activity/${routeId}`);
+        const activitySnap = await get(activityRef);
+        if (!activitySnap.exists()) {
+          await set(activityRef, {
+            routeName,
+            count: 0,
+            capacity: 70,
+            lastUpdated: new Date().toISOString(),
+          });
+        } else {
+          // Keep routeName in sync with routes node
+          const actData = activitySnap.val();
+          if (!actData.routeName) {
+            await set(activityRef, { ...actData, routeName });
+          }
+        }
+      });
+    });
+
+    const activeRouteRef = ref(db, "system_status/active_route_id");
+    const unsubscribeActiveRoute = onValue(activeRouteRef, (snap) => {
+      if (snap.exists()) {
+        setSelectedRouteId(snap.val());
+      }
+    });
+
+    return () => {
+      unsubscribeRoutes();
+      unsubscribeMainRoutes();
+      unsubscribeActiveRoute();
+    };
+  }, [selectedRouteId]);
+
+
+  // Keep the ref in sync whenever selectedRouteId changes
+  useEffect(() => {
+    selectedRouteIdRef.current = selectedRouteId;
+  }, [selectedRouteId]);
+
+  // Hardware Bridge – listens to the hardware's `passengers` node and
+  // forwards any change (delta) to whichever route is currently active.
+  useEffect(() => {
+    const hwRef = ref(db, "passengers");
+    const unsubscribeHw = onValue(hwRef, async (snap) => {
+      if (!snap.exists()) return;
+      const hwCount = snap.val().count ?? 0;
+
+      // Ensure the Driver UI always shows the exact live hardware count
+      setPassengers(hwCount);
+
+      // First read – just record the baseline, don't add anything.
+      if (prevHardwareCount.current === null) {
+        prevHardwareCount.current = hwCount;
+        return;
+      }
+
+      const delta = hwCount - prevHardwareCount.current;
+      prevHardwareCount.current = hwCount;
+
+      if (delta === 0) return;
+
+      const routeId = selectedRouteIdRef.current;
+      if (!routeId) return; // No route selected yet – ignore.
+
+      // Apply delta to the active route
+      const routeRef = ref(db, `routes_activity/${routeId}`);
+      const routeSnap = await get(routeRef);
+      if (routeSnap.exists()) {
+        const current = routeSnap.val();
+        const newCount = Math.max(0, (current.count || 0) + delta);
+        await set(routeRef, {
+          ...current,
+          count: newCount,
+          lastUpdated: new Date().toISOString(),
+        });
+      }
+    });
+
+    return () => unsubscribeHw();
+  }, []); // runs once – uses ref for routeId so no re-subscription needed
 
   // Scanner animation effect
   useEffect(() => {
@@ -169,19 +272,21 @@ export default function DriverModeScreen() {
       // Mark as onboarded
       await set(ref(db, `tickets/${targetUserUid}/${ticketId}/onboarded`), true);
 
-      // Update passenger count in Firebase
-      const passengersRef = ref(db, "passengers");
-      const snapshot = await get(passengersRef);
+      // Update passenger count in Firebase for the selected route
+      if (!selectedRouteId) {
+        throw new Error("No route selected");
+      }
+      const routeRef = ref(db, `routes_activity/${selectedRouteId}`);
+      const snapshot = await get(routeRef);
 
       if (snapshot.exists()) {
         const current = snapshot.val();
         const newCount = (current.count || 0) + 1;
 
-        await set(passengersRef, {
+        await set(routeRef, {
           ...current,
           count: newCount,
-          lastScan: new Date().toISOString(),
-          lastPassenger: foundTicket.seatReservations?.[0]?.passengerName || "Unknown",
+          lastUpdated: new Date().toISOString()
         });
 
         // Log the boarding event
@@ -219,6 +324,15 @@ export default function DriverModeScreen() {
 
   // Handle scanner open with permission check
   const handleOpenScanner = async () => {
+    if (!selectedRouteId) {
+      Alert.alert(
+        "Select a Route",
+        "Please select a route before scanning tickets.",
+        [{ text: "OK", style: "default" }]
+      );
+      return;
+    }
+    
     if (!permission?.granted) {
       const result = await requestPermission();
       if (!result.granted) {
@@ -279,6 +393,54 @@ export default function DriverModeScreen() {
 
       {/* Main Content */}
       <View style={styles.content}>
+        
+        {/* Route Selector */}
+        <View style={{ marginBottom: 20 }}>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: Colors.textPrimary, marginBottom: 12 }}>Select Active Route</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+            {Object.keys(availableRoutes).length > 0 ? (
+              Object.keys(availableRoutes).map((routeId) => {
+                const route = availableRoutes[routeId];
+                const isActive = selectedRouteId === routeId;
+                return (
+                  <TouchableOpacity
+                    key={routeId}
+                    style={[
+                      styles.routeChip,
+                      isActive && styles.routeChipActive
+                    ]}
+                    onPress={async () => {
+                      // Reset all OTHER routes to count=0 (bus is no longer on them)
+                      const allRouteIds = Object.keys(availableRoutes);
+                      for (const rId of allRouteIds) {
+                        if (rId !== routeId) {
+                          const otherRoute = availableRoutes[rId];
+                          await set(ref(db, `routes_activity/${rId}`), {
+                            ...otherRoute,
+                            count: 0,
+                            lastUpdated: new Date().toISOString(),
+                          });
+                        }
+                      }
+                      // Set this route as the active one
+                      await set(ref(db, "system_status/active_route_id"), routeId);
+                    }}
+                  >
+                    <Text style={[
+                      styles.routeChipText,
+                      isActive && styles.routeChipTextActive
+                    ]}>
+                      {route.routeName || routeId}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })
+            ) : (
+              <Text style={{ color: Colors.textSecondary }}>No routes available.</Text>
+            )}
+          </View>
+        </View>
+
         {/* Passenger Stats Card */}
         <Animated.View
           style={[
@@ -798,6 +960,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 20,
     backgroundColor: "rgba(0,0,0,0.4)",
+  },
+  routeChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  routeChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  routeChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  routeChipTextActive: {
+    color: '#FFFFFF',
   },
   closeButton: {
     width: 40,

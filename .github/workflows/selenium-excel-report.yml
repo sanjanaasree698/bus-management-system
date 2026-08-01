@@ -1,0 +1,43 @@
+name: Selenium Test Analysis Report Generator
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate-selenium-excel:
+    name: Generate Selenium Excel Analysis Report
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install openpyxl pandas
+
+      - name: Execute Selenium Excel Generation Script
+        run: |
+          python reports/generate_selenium_excel.py selenium_test_analysis.xlsx | tee selenium_log.txt
+
+      - name: Publish Selenium Coverage Step Summary
+        if: always()
+        run: |
+          if [ -f "selenium_summary.md" ]; then
+            cat selenium_summary.md >> $GITHUB_STEP_SUMMARY
+          fi
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          cat selenium_log.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Selenium Test Analysis Excel Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: selenium-test-analysis-excel
+          path: selenium_test_analysis.xlsx

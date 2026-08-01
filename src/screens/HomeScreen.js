@@ -150,6 +150,8 @@ const HomeScreen = ({ onLogout }) => {
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [seatModalVisible, setSeatModalVisible] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState(null);
+  // When a popular route is directly tapped, store the route ID to filter results
+  const [filterRouteId, setFilterRouteId] = useState(null);
 
   // ── DB listeners ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -227,9 +229,15 @@ const HomeScreen = ({ onLogout }) => {
   const handleSwap = () => { const t = fromStop; setFromStop(toStop); setToStop(t); };
   const handleSearch = () => {
     if (!fromStop.trim() || !toStop.trim()) { Alert.alert("Required", "Please select both Start and Destination stops."); return; }
+    setFilterRouteId(null); // clear any route-specific filter when doing a free search
     setCurrentScreen("results");
   };
-const routeFare = (r) => Math.round((r.totalDistance || 15) * 3.5 + 15);
+const routeFare = (r) => {
+    // Calculate fare based on stops between from and to, or use route's own fare
+    if (r.fare) return r.fare;
+    const totalDist = r.totalDistance || 15;
+    return Math.round(totalDist * 3.5 + 15);
+  };
   // ═══════════════════════════════════════════════════════════════════════════
   // RESULTS SCREEN
   // ═══════════════════════════════════════════════════════════════════════════
@@ -238,6 +246,9 @@ const routeFare = (r) => Math.round((r.totalDistance || 15) * 3.5 + 15);
     const shortDay = selectedDate.toLocaleDateString("en-IN", { weekday: "short" });
     let buses = popularRoutes.length > 0
       ? popularRoutes.flatMap((r, i) => {
+          // If user tapped a specific popular route, only show that route
+          if (filterRouteId && r.id !== filterRouteId) return [];
+
           let distanceStr = r.distance || "15 km";
           let durationStr = r.duration || "1h 0m";
           let totalMins = 60; // default
@@ -254,7 +265,8 @@ const routeFare = (r) => Math.round((r.totalDistance || 15) * 3.5 + 15);
               distanceStr = d.toFixed(1) + " km";
               totalMins = Math.round((d / 30) * 60);
               durationStr = `${Math.floor(totalMins/60)}h ${totalMins%60}m`;
-            } else if (fIdx !== -1 || tIdx !== -1) {
+            } else if (fIdx === -1 || tIdx === -1 || fIdx >= tIdx) {
+              // This route does NOT serve the requested from→to journey — skip it
               return [];
             }
           }
@@ -283,11 +295,7 @@ const routeFare = (r) => Math.round((r.totalDistance || 15) * 3.5 + 15);
             routeStops: activeStops, originalRoute: r, bookingCount: r.bookingCount
           }];
         })
-      : [
-          { id: "1", name: "CROWD SENSE EXPRESS", tag: "CHEAPEST", price: 35, depTime: "7:40 AM", arrTime: "8:40 AM", duration: "1h 0m", stops: 1, type: "One-way", distance: "12 km", originalRoute: { id: "1", name: "CROWD SENSE EXPRESS", totalDistance: 12, stops: [{name: fromStop||"Start"}, {name: toStop||"End"}] } },
-          { id: "2", name: "METRO CONNECT",  tag: "",         price: 43, depTime: "9:05 AM", arrTime: "10:25 AM",duration: "1h 20m",stops: 1, type: "One-way", distance: "15 km", originalRoute: { id: "2", name: "METRO CONNECT", totalDistance: 15, stops: [{name: fromStop||"Start"}, {name: toStop||"End"}] } },
-          { id: "3", name: "CITY LINK",      tag: "",         price: 38, depTime: "6:40 AM", arrTime: "7:40 AM", duration: "1h 0m", stops: 1, type: "One-way", distance: "14 km", originalRoute: { id: "3", name: "CITY LINK", totalDistance: 14, stops: [{name: fromStop||"Start"}, {name: toStop||"End"}] } },
-        ];
+      : [];
     if (resultsFilter === "Cheapest") buses = [...buses].sort((a, b) => a.price - b.price);
 
     return (
@@ -568,6 +576,7 @@ const routeFare = (r) => Math.round((r.totalDistance || 15) * 3.5 + 15);
                 style={styles.routeCard}
                 onPress={() => {
                   if (r.stops?.length >= 2) { setFromStop(r.stops[0].name); setToStop(r.stops[r.stops.length - 1].name); }
+                  setFilterRouteId(r.id); // pre-filter to show only this route
                   setCurrentScreen("results");
                 }}
                 activeOpacity={0.88}
